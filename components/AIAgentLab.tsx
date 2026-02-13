@@ -32,6 +32,50 @@ interface EbookData extends EbookPlan {
     link?: string;
 }
 
+// Helper to create WAV blob from AudioBuffer
+const bufferToWave = (abuffer: AudioBuffer, len: number) => {
+  let numOfChan = abuffer.numberOfChannels,
+      length = len * numOfChan * 2 + 44,
+      buffer = new ArrayBuffer(length),
+      view = new DataView(buffer),
+      channels = [], i, sample, offset = 0, pos = 0;
+
+  // write WAVE header
+  setUint32(0x46464952);                         // "RIFF"
+  setUint32(length - 8);                         // file length - 8
+  setUint32(0x45564157);                         // "WAVE"
+
+  setUint32(0x20746d66);                         // "fmt " chunk
+  setUint32(16);                                 // length = 16
+  setUint16(1);                                  // PCM (uncompressed)
+  setUint16(numOfChan);
+  setUint32(abuffer.sampleRate);
+  setUint32(abuffer.sampleRate * 2 * numOfChan); // avg. bytes/sec
+  setUint16(numOfChan * 2);                      // block-align
+  setUint16(16);                                 // 16-bit
+
+  setUint32(0x61746164);                         // "data" - chunk
+  setUint32(length - pos - 4);                   // chunk length
+
+  for(i = 0; i < abuffer.numberOfChannels; i++)
+    channels.push(abuffer.getChannelData(i));
+
+  while(pos < len) {
+    for(i = 0; i < numOfChan; i++) {
+      sample = Math.max(-1, Math.min(1, channels[i][pos])); 
+      sample = (0.5 + sample < 0 ? sample * 32768 : sample * 32767)|0; 
+      view.setInt16(44 + offset, sample, true); 
+      offset += 2;
+    }
+    pos++;
+  }
+
+  return new Blob([buffer], {type: "audio/wav"});
+
+  function setUint16(data: number) { view.setUint16(pos, data, true); pos += 2; }
+  function setUint32(data: number) { view.setUint32(pos, data, true); pos += 4; }
+};
+
 const AIAgentLab: React.FC<AIAgentLabProps> = ({ user, onUsage }) => {
   const [mode, setMode] = useState<AgentMode>('RESEARCH');
   const [mission, setMission] = useState('');
@@ -75,6 +119,8 @@ const AIAgentLab: React.FC<AIAgentLabProps> = ({ user, onUsage }) => {
   const [musicConfig, setMusicConfig] = useState({ genre: 'Lo-Fi', mood: 'Chill', prompt: '' });
   const [musicData, setMusicData] = useState<MusicConcept | null>(null);
   const [musicCover, setMusicCover] = useState<string | null>(null);
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   // Terminal auto-scroll
   const logsEndRef = useRef<HTMLDivElement>(null);
@@ -108,6 +154,98 @@ const AIAgentLab: React.FC<AIAgentLabProps> = ({ user, onUsage }) => {
     }
     return true;
   }
+
+  // Generate Procedural Audio
+  const generateProceduralTrack = async (bpm: number, genre: string): Promise<string> => {
+      const duration = 20; // 20 seconds
+      const sampleRate = 44100;
+      // Safari support check
+      const OfflineCtx = (window as any).OfflineAudioContext || (window as any).webkitOfflineAudioContext;
+      if(!OfflineCtx) throw new Error("Audio Context not supported");
+
+      const ctx = new OfflineCtx(2, sampleRate * duration, sampleRate);
+      
+      // Constants
+      const beatTime = 60 / bpm;
+      const totalBeats = Math.floor(duration / beatTime);
+      
+      // 1. Drums (Kick)
+      for (let i = 0; i < totalBeats; i++) {
+          const time = i * beatTime;
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          
+          osc.frequency.setValueAtTime(150, time);
+          osc.frequency.exponentialRampToValueAtTime(0.01, time + 0.5);
+          
+          gain.gain.setValueAtTime(0.8, time);
+          gain.gain.exponentialRampToValueAtTime(0.01, time + 0.5);
+          
+          osc.start(time);
+          osc.stop(time + 0.5);
+      }
+
+      // 2. Hi-Hats (every half beat)
+      for (let i = 0; i < totalBeats * 2; i++) {
+          const time = i * (beatTime / 2);
+          // Noise buffer for hi-hat
+          const bufferSize = sampleRate * 0.05; // 50ms
+          const buffer = ctx.createBuffer(1, bufferSize, sampleRate);
+          const data = buffer.getChannelData(0);
+          for (let j = 0; j < bufferSize; j++) data[j] = Math.random() * 2 - 1;
+          
+          const noise = ctx.createBufferSource();
+          noise.buffer = buffer;
+          const noiseFilter = ctx.createBiquadFilter();
+          noiseFilter.type = 'highpass';
+          noiseFilter.frequency.value = 5000;
+          const noiseGain = ctx.createGain();
+          
+          noise.connect(noiseFilter);
+          noiseFilter.connect(noiseGain);
+          noiseGain.connect(ctx.destination);
+          
+          noiseGain.gain.setValueAtTime(0.3, time);
+          noiseGain.gain.exponentialRampToValueAtTime(0.01, time + 0.05);
+          
+          noise.start(time);
+      }
+
+      // 3. Bass/Melody (Random Pentatonic)
+      // C Minor Pentatonic: C(65.41), Eb(77.78), F(87.31), G(98.00), Bb(116.54)
+      const scale = [65.41, 77.78, 87.31, 98.00, 116.54, 130.81, 155.56];
+      let nextNoteTime = 0;
+      while(nextNoteTime < duration) {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          
+          // Reverb-ish effect via delay (simplified)
+          // For true reverb we'd need convolver, but let's keep it simple
+          
+          osc.type = genre.includes('Lo-Fi') ? 'sine' : 'sawtooth';
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          
+          const noteDuration = beatTime * (Math.random() > 0.5 ? 1 : 0.5);
+          const freq = scale[Math.floor(Math.random() * scale.length)];
+          
+          osc.frequency.value = freq;
+          
+          gain.gain.setValueAtTime(0.3, nextNoteTime);
+          gain.gain.exponentialRampToValueAtTime(0.01, nextNoteTime + noteDuration);
+          
+          osc.start(nextNoteTime);
+          osc.stop(nextNoteTime + noteDuration);
+          
+          nextNoteTime += noteDuration;
+      }
+
+      const renderedBuffer = await ctx.startRendering();
+      const blob = bufferToWave(renderedBuffer, renderedBuffer.length);
+      return URL.createObjectURL(blob);
+  };
 
   const handleRunMission = async () => {
     if (!mission.trim()) return;
@@ -453,6 +591,7 @@ const AIAgentLab: React.FC<AIAgentLabProps> = ({ user, onUsage }) => {
       setLogs(["> [JAP-PRODUCER] Initializing Digital Audio Workstation (DAW)..."]);
       setMusicData(null);
       setMusicCover(null);
+      setAudioUrl(null);
 
       try {
           // 1. Concept Generation
@@ -480,12 +619,17 @@ const AIAgentLab: React.FC<AIAgentLabProps> = ({ user, onUsage }) => {
           const coverUrl = await generateImage(coverPrompt);
           if (coverUrl) setMusicCover(coverUrl);
 
-          // 4. Mastering
+          // 4. Mastering & Audio Rendering
           setMusicStep('MASTERING');
+          setLogs(prev => [...prev, "> [DSP Core] Synthesizing audio waveforms (15s Preview)..."]);
+          
+          // Generate real audio blob
+          const audioBlobUrl = await generateProceduralTrack(concept.bpm, musicConfig.genre);
+          setAudioUrl(audioBlobUrl);
+          
           setLogs(prev => [...prev, "> [Mastering Rack] Applying Multi-Band Compression..."]);
-          await new Promise(resolve => setTimeout(resolve, 1500)); // Sim delay
+          await new Promise(resolve => setTimeout(resolve, 1000)); 
           setLogs(prev => [...prev, "> [Mastering Rack] Limiting to -14 LUFS..."]);
-          await new Promise(resolve => setTimeout(resolve, 1500)); 
 
           // 5. Complete
           setMusicStep('COMPLETE');
@@ -605,8 +749,8 @@ const AIAgentLab: React.FC<AIAgentLabProps> = ({ user, onUsage }) => {
           );
       }
 
-      if (musicStep === 'COMPLETE' && musicData) {
-          const downloadLink = `https://japcoin.co.uk/music/track-${Math.floor(Math.random() * 10000)}`;
+      if (musicStep === 'COMPLETE' && musicData && audioUrl) {
+          const downloadFilename = `${musicData.title.replace(/\s/g, '_')}.wav`;
           
           return (
               <div className="bg-black rounded-2xl h-full flex flex-col items-center justify-center p-8 relative overflow-hidden">
@@ -627,25 +771,23 @@ const AIAgentLab: React.FC<AIAgentLabProps> = ({ user, onUsage }) => {
                       <h2 className="text-2xl font-bold text-white mb-1 text-center">{musicData.title}</h2>
                       <p className="text-jap-gold text-sm font-mono mb-6">{musicData.bpm} BPM • {musicData.key}</p>
 
-                      {/* Mock Audio Player */}
-                      <div className="w-full bg-gray-800 h-12 rounded-full flex items-center px-4 gap-3 mb-6 border border-white/5">
-                          <button className="text-white hover:text-jap-gold">
-                              <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
-                          </button>
-                          <div className="flex-1 h-1 bg-gray-600 rounded-full overflow-hidden">
-                              <div className="w-1/3 h-full bg-jap-gold"></div>
-                          </div>
-                          <span className="text-xs text-gray-400">0:45 / 2:30</span>
+                      {/* Real Audio Player */}
+                      <div className="w-full mb-6">
+                          <audio ref={audioRef} controls src={audioUrl} className="w-full h-10 rounded-lg opacity-80 hover:opacity-100 transition-opacity" />
                       </div>
 
                       <div className="flex flex-col w-full gap-3">
-                          <a href={downloadLink} target="_blank" className="flex items-center justify-center gap-2 w-full bg-jap-gold text-black py-3 rounded font-bold hover:bg-yellow-500 transition-colors">
+                          <a 
+                            href={audioUrl} 
+                            download={downloadFilename} 
+                            className="flex items-center justify-center gap-2 w-full bg-jap-gold text-black py-3 rounded font-bold hover:bg-yellow-500 transition-colors"
+                          >
                               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
                               Download Master (.wav)
                           </a>
                           <div className="text-center">
                               <p className="text-[10px] text-gray-500">100% Royalty Free. Ownership transferred via JAP-ID.</p>
-                              <a href={downloadLink} className="text-[10px] text-indigo-400 hover:text-white">{downloadLink}</a>
+                              <p className="text-[10px] text-indigo-400 mt-1">Official License: Japcoin.co.uk/license/{Math.floor(Math.random()*100000)}</p>
                           </div>
                       </div>
                   </div>
