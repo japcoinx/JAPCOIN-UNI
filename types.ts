@@ -52,6 +52,7 @@ export interface User {
   appsCreated?: number; // Track App Builder usage
   websitesCreated?: number; // Track Website Builder usage
   ebooksCreated?: number; // Track Ebook Creator usage (Limit 3/mo)
+  musicCreated?: number; // Track Music Generator usage (Limit 5/mo)
   
   // AI Mentor Metrics
   level?: 'Beginner' | 'Intermediate' | 'Advanced';

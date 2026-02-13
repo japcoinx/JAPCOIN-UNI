@@ -185,7 +185,7 @@ export const runSwarmArchitecture = async (
 export const streamAgentMission = async (
     mission: string,
     onChunk: (text: string) => void,
-    mode: 'RESEARCH' | 'CODING' | 'APP_BUILDER' | 'SWARM' | 'EBOOK_CREATOR' = 'RESEARCH'
+    mode: 'RESEARCH' | 'CODING' | 'APP_BUILDER' | 'SWARM' | 'EBOOK_CREATOR' | 'MUSIC_STUDIO' = 'RESEARCH'
 ): Promise<void> => {
     const client = getClient();
     if (!client) throw new Error("API Key missing");
@@ -293,6 +293,19 @@ export const streamAgentMission = async (
 
         [RESULT]
         {The final detailed answer/report in Markdown format}
+        `;
+    } else if (mode === 'MUSIC_STUDIO') {
+        systemPrompt = `You are JAP-PRODUCER, a world-class AI Music Architect.
+        Your goal is to simulate the creation of a high-quality music track.
+        Use "Studio Log" style output.
+        Describe the process of composing, mixing, and mastering in real-time logs.
+        Format:
+        [LOG] Analyzing genre requirements...
+        [LOG] Setting tempo to {BPM}...
+        [LOG] Generating drum pattern...
+        [LOG] Synthesizing bassline...
+        ...
+        [RESULT] Track Complete.
         `;
     }
 
@@ -410,6 +423,47 @@ export const generateChapterContent = async (bookTitle: string, chapterTitle: st
     });
 
     return response.text || "";
+}
+
+// --- MUSIC GENERATOR (CONCEPT) ---
+
+export interface MusicConcept {
+    title: string;
+    bpm: number;
+    key: string;
+    stems: string[];
+    description: string;
+}
+
+export const generateMusicConcept = async (genre: string, mood: string, promptText: string): Promise<MusicConcept | null> => {
+    const client = getClient();
+    if (!client) return null;
+
+    const prompt = `You are a Platinum Music Producer.
+    Create a detailed concept for a new ${genre} track.
+    Mood: ${mood}
+    User Prompt: ${promptText}
+
+    Return valid JSON:
+    {
+        "title": "Creative Track Name",
+        "bpm": 128,
+        "key": "C Minor",
+        "stems": ["Drum Loop", "Bassline", "Synth Lead", "Atmosphere"],
+        "description": "A brief description of the sonic texture and vibe."
+    }`;
+
+    try {
+        const response = await client.models.generateContent({
+            model: 'gemini-3-flash-preview',
+            contents: prompt,
+            config: { responseMimeType: 'application/json' }
+        });
+        return JSON.parse(response.text || "{}");
+    } catch (e) {
+        console.error("Music Concept Error", e);
+        return null;
+    }
 }
 
 // --- COURSE GENERATOR ---

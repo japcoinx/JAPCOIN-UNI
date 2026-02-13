@@ -1,9 +1,10 @@
 
-
+// ... existing imports
 import { Course, User, NFT, Achievement, JapDriveFile, Job } from './types';
 
 export const JAP_CONTRACT_ADDRESS = '0x372cefcddf87ddb5e1d5de8399a47afda2d8e189';
 
+// ... existing contract codes ... 
 export const JAP_REWARDS_CONTRACT_CODE = `// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
@@ -383,6 +384,8 @@ export const MOCK_USER: User = {
   subscriptionTier: 'STANDARD',
   appsCreated: 0,
   websitesCreated: 0,
+  ebooksCreated: 0,
+  musicCreated: 0,
   
   // AI Mentor Data
   level: 'Beginner',
@@ -390,6 +393,7 @@ export const MOCK_USER: User = {
   tradingRiskScore: 75
 };
 
+// ... existing COURSES export
 export const COURSES: Course[] = [
   // --- TRACK 1: FUNDAMENTALS ---
   {

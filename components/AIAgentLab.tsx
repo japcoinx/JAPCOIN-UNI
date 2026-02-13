@@ -1,17 +1,18 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import Button from './Button';
-import { streamAgentMission, generateImage, generateCoursePlan, generateLessonScript, generateQuiz, generateLongVideoChain, chunkScript, runSwarmArchitecture, generateEbookStructure, generateChapterContent, EbookPlan } from '../services/geminiService';
+import { streamAgentMission, generateImage, generateCoursePlan, generateLessonScript, generateQuiz, generateLongVideoChain, chunkScript, runSwarmArchitecture, generateEbookStructure, generateChapterContent, EbookPlan, generateMusicConcept, MusicConcept } from '../services/geminiService';
 import { User } from '../types';
 
 interface AIAgentLabProps {
     user: User;
-    onUsage?: (type: 'APP' | 'WEBSITE' | 'EBOOK') => void;
+    onUsage?: (type: 'APP' | 'WEBSITE' | 'EBOOK' | 'MUSIC') => void;
 }
 
-type AgentMode = 'RESEARCH' | 'CREATIVE' | 'CODING' | 'APP_BUILDER' | 'COURSE_STUDIO' | 'SWARM' | 'EBOOK_CREATOR';
+type AgentMode = 'RESEARCH' | 'CREATIVE' | 'CODING' | 'APP_BUILDER' | 'COURSE_STUDIO' | 'SWARM' | 'EBOOK_CREATOR' | 'MUSIC_STUDIO';
 type CourseStep = 'INPUT' | 'PLANNING' | 'SCRIPTING' | 'CHUNKING' | 'FILMING' | 'QUIZ' | 'COMPLETE';
 type EbookStep = 'CONFIG' | 'OUTLINING' | 'WRITING' | 'DESIGNING' | 'PUBLISHED';
+type MusicStep = 'CONFIG' | 'COMPOSING' | 'MASTERING' | 'COMPLETE';
 
 interface Deployment {
     id: string;
@@ -69,6 +70,12 @@ const AIAgentLab: React.FC<AIAgentLabProps> = ({ user, onUsage }) => {
   const [ebookData, setEbookData] = useState<EbookData | null>(null);
   const [currentChapterGenIndex, setCurrentChapterGenIndex] = useState(0);
 
+  // Music Studio State
+  const [musicStep, setMusicStep] = useState<MusicStep>('CONFIG');
+  const [musicConfig, setMusicConfig] = useState({ genre: 'Lo-Fi', mood: 'Chill', prompt: '' });
+  const [musicData, setMusicData] = useState<MusicConcept | null>(null);
+  const [musicCover, setMusicCover] = useState<string | null>(null);
+
   // Terminal auto-scroll
   const logsEndRef = useRef<HTMLDivElement>(null);
   const resultEndRef = useRef<HTMLDivElement>(null);
@@ -79,7 +86,7 @@ const AIAgentLab: React.FC<AIAgentLabProps> = ({ user, onUsage }) => {
 
   useEffect(() => {
     // Only scroll result if we are actively adding to it
-    if (isRunning && mode !== 'COURSE_STUDIO' && mode !== 'EBOOK_CREATOR') {
+    if (isRunning && mode !== 'COURSE_STUDIO' && mode !== 'EBOOK_CREATOR' && mode !== 'MUSIC_STUDIO') {
         resultEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
   }, [result, isRunning, mode]);
@@ -163,6 +170,8 @@ const AIAgentLab: React.FC<AIAgentLabProps> = ({ user, onUsage }) => {
         } else if (mode === 'COURSE_STUDIO') {
             await handleRunCourseStudio();
         } else if (mode === 'EBOOK_CREATOR') {
+            // Handled separately
+        } else if (mode === 'MUSIC_STUDIO') {
             // Handled separately
         } else if (mode === 'SWARM') {
             setLogs(prev => [...prev, "> [JAP-AI GENERAL] Order Received. Initializing Swarm Protocol..."]);
@@ -430,7 +439,245 @@ const AIAgentLab: React.FC<AIAgentLabProps> = ({ user, onUsage }) => {
       }
   };
 
+  const handleRunMusicStudio = async () => {
+      // Access Check
+      if (!(await checkApiKey())) return;
+
+      if ((user.musicCreated || 0) >= 5) {
+          alert("Monthly Music limit reached (5/5). Wait for reset.");
+          return;
+      }
+
+      setIsRunning(true);
+      setMusicStep('COMPOSING');
+      setLogs(["> [JAP-PRODUCER] Initializing Digital Audio Workstation (DAW)..."]);
+      setMusicData(null);
+      setMusicCover(null);
+
+      try {
+          // 1. Concept Generation
+          setLogs(prev => [...prev, `> [Music Theory Engine] Composing ${musicConfig.genre} track (${musicConfig.mood})...`]);
+          const concept = await generateMusicConcept(musicConfig.genre, musicConfig.mood, musicConfig.prompt);
+          if (!concept) throw new Error("Failed to generate concept");
+          
+          setMusicData(concept);
+          setLogs(prev => [...prev, `> [Music Theory Engine] Track Blueprint: "${concept.title}" (${concept.bpm} BPM, ${concept.key})`]);
+
+          // 2. Simulate Production (Streaming Logs)
+          await streamAgentMission(`
+              Compose a ${musicConfig.genre} track titled "${concept.title}".
+              BPM: ${concept.bpm}, Key: ${concept.key}.
+              Mood: ${musicConfig.mood}.
+              Stems: ${concept.stems.join(', ')}.
+              Simulate the creation of drum patterns, basslines, and melodies.
+          `, (chunk) => {
+              // Just logging the stream
+          }, 'MUSIC_STUDIO');
+
+          // 3. Album Art
+          setLogs(prev => [...prev, "> [Visualizer] Generating Album Art..."]);
+          const coverPrompt = `Album art for a ${musicConfig.genre} music track titled "${concept.title}". Mood: ${musicConfig.mood}. High quality, 4k, abstract, artistic.`;
+          const coverUrl = await generateImage(coverPrompt);
+          if (coverUrl) setMusicCover(coverUrl);
+
+          // 4. Mastering
+          setMusicStep('MASTERING');
+          setLogs(prev => [...prev, "> [Mastering Rack] Applying Multi-Band Compression..."]);
+          await new Promise(resolve => setTimeout(resolve, 1500)); // Sim delay
+          setLogs(prev => [...prev, "> [Mastering Rack] Limiting to -14 LUFS..."]);
+          await new Promise(resolve => setTimeout(resolve, 1500)); 
+
+          // 5. Complete
+          setMusicStep('COMPLETE');
+          setLogs(prev => [...prev, "> [Export] Track rendered. Uploading to Japcoin.co.uk..."]);
+          
+          if (onUsage) onUsage('MUSIC');
+
+      } catch (e) {
+          console.error(e);
+          setError("Music generation failed.");
+          setMusicStep('CONFIG');
+      } finally {
+          setIsRunning(false);
+      }
+  };
+
   // --- RENDER HELPERS ---
+
+  const renderMusicStudio = () => {
+      // CERTIFIED CHECK
+      if (user.subscriptionTier !== 'CERTIFIED') {
+          return (
+             <div className="flex-1 flex items-center justify-center bg-jap-card rounded-2xl border border-white/10 h-full relative overflow-hidden">
+                 <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?q=80&w=1000&auto=format&fit=crop')] bg-cover opacity-10"></div>
+                 <div className="text-center p-8 bg-black/80 backdrop-blur-xl border border-jap-gold rounded-xl shadow-2xl max-w-md relative z-10">
+                        <div className="w-16 h-16 bg-jap-gold rounded-full flex items-center justify-center mx-auto mb-4 text-black shadow-[0_0_20px_#D4AF37]">
+                            <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" /></svg>
+                        </div>
+                        <h3 className="text-2xl font-bold text-white mb-2">JAP Music Studio Locked</h3>
+                        <p className="text-gray-400 text-sm mb-6 leading-relaxed">
+                            Produce high-quality, copyright-free beats with JAP-AI Producer.
+                            <br/><span className="text-jap-gold font-bold">Exclusive to Certified Tier.</span>
+                        </p>
+                        <Button onClick={() => window.location.hash = 'pricing'} className="w-full">Upgrade to Certified</Button>
+                 </div>
+             </div>
+          );
+      }
+
+      if (musicStep === 'CONFIG') {
+          return (
+              <div className="bg-jap-card rounded-2xl p-8 border border-jap-gold/30 shadow-[0_0_50px_rgba(212,175,55,0.15)] h-full flex flex-col items-center justify-center relative overflow-hidden">
+                  {/* Equalizer Visual BG */}
+                  <div className="absolute inset-0 flex items-end justify-center gap-1 opacity-10 pointer-events-none pb-0">
+                      {[...Array(20)].map((_, i) => (
+                          <div key={i} className="w-4 bg-jap-gold animate-pulse" style={{ height: `${Math.random() * 50 + 10}%`, animationDuration: `${Math.random() * 1 + 0.5}s` }}></div>
+                      ))}
+                  </div>
+
+                  <div className="w-full max-w-lg space-y-8 relative z-10">
+                      <div className="text-center">
+                          <h2 className="text-4xl font-black text-white tracking-tight italic">JAP AUDIO LAB</h2>
+                          <p className="text-jap-gold text-xs font-mono uppercase tracking-[0.2em] mt-2">AI Music Production Suite</p>
+                          <p className="text-gray-400 text-sm mt-4">
+                              "Create royalty-free beats in seconds."
+                          </p>
+                          <p className="text-xs text-gray-500 mt-2"> Monthly Limit: {(user.musicCreated || 0)}/5 Tracks Used</p>
+                      </div>
+
+                      <div className="space-y-5 bg-black/60 backdrop-blur-md p-8 rounded-xl border border-white/10 shadow-2xl">
+                          <div>
+                              <label className="block text-xs font-bold text-gray-400 uppercase mb-1">Track Vibe / Prompt</label>
+                              <input 
+                                  type="text" 
+                                  value={musicConfig.prompt}
+                                  onChange={(e) => setMusicConfig({...musicConfig, prompt: e.target.value})}
+                                  className="w-full bg-black/50 border border-white/20 rounded-lg px-4 py-3 text-white focus:border-jap-gold outline-none"
+                                  placeholder="e.g. A cyberpunk chase scene with heavy bass"
+                              />
+                          </div>
+                          
+                          <div className="grid grid-cols-2 gap-4">
+                              <div>
+                                  <label className="block text-xs font-bold text-gray-400 uppercase mb-1">Genre</label>
+                                  <select 
+                                      value={musicConfig.genre} 
+                                      onChange={(e) => setMusicConfig({...musicConfig, genre: e.target.value})}
+                                      className="w-full bg-black/50 border border-white/20 rounded-lg px-4 py-3 text-white focus:border-jap-gold outline-none appearance-none"
+                                  >
+                                      <option value="Lo-Fi">Lo-Fi Hip Hop</option>
+                                      <option value="Trap">Trap / Rap</option>
+                                      <option value="EDM">EDM / House</option>
+                                      <option value="Cinematic">Cinematic Score</option>
+                                      <option value="Ambient">Ambient / Meditation</option>
+                                      <option value="Rock">Rock / Metal</option>
+                                      <option value="Synthwave">Synthwave</option>
+                                  </select>
+                              </div>
+                              <div>
+                                  <label className="block text-xs font-bold text-gray-400 uppercase mb-1">Mood</label>
+                                  <select 
+                                      value={musicConfig.mood} 
+                                      onChange={(e) => setMusicConfig({...musicConfig, mood: e.target.value})}
+                                      className="w-full bg-black/50 border border-white/20 rounded-lg px-4 py-3 text-white focus:border-jap-gold outline-none appearance-none"
+                                  >
+                                      <option value="Chill">Chill / Relaxed</option>
+                                      <option value="Energetic">Energetic / Hype</option>
+                                      <option value="Dark">Dark / Mysterious</option>
+                                      <option value="Happy">Happy / Uplifting</option>
+                                      <option value="Aggressive">Aggressive</option>
+                                      <option value="Emotional">Emotional</option>
+                                  </select>
+                              </div>
+                          </div>
+                          
+                          <Button 
+                              fullWidth 
+                              onClick={handleRunMusicStudio}
+                              disabled={!musicConfig.prompt.trim()}
+                              className="mt-6 bg-gradient-to-r from-purple-600 to-indigo-600 text-white border-none hover:from-purple-500 hover:to-indigo-500"
+                          >
+                              Generate Audio
+                          </Button>
+                      </div>
+                  </div>
+              </div>
+          );
+      }
+
+      if (musicStep === 'COMPLETE' && musicData) {
+          const downloadLink = `https://japcoin.co.uk/music/track-${Math.floor(Math.random() * 10000)}`;
+          
+          return (
+              <div className="bg-black rounded-2xl h-full flex flex-col items-center justify-center p-8 relative overflow-hidden">
+                  {/* Background Ambience */}
+                  <div className="absolute inset-0 bg-gradient-to-b from-indigo-900/20 to-black"></div>
+                  
+                  <div className="relative z-10 w-full max-w-md bg-[#121212] border border-white/10 rounded-xl p-6 shadow-2xl flex flex-col items-center">
+                      <div className="relative group w-64 h-64 mb-6">
+                          {musicCover ? (
+                              <img src={musicCover} alt="Album Art" className="w-full h-full object-cover rounded shadow-lg animate-spin-slow" style={{ animationDuration: '10s' }} />
+                          ) : (
+                              <div className="w-full h-full bg-gray-800 rounded flex items-center justify-center text-gray-500">No Art</div>
+                          )}
+                          {/* Center Hole for Vinyl Look */}
+                          <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-8 h-8 bg-[#121212] rounded-full border border-gray-700"></div>
+                      </div>
+
+                      <h2 className="text-2xl font-bold text-white mb-1 text-center">{musicData.title}</h2>
+                      <p className="text-jap-gold text-sm font-mono mb-6">{musicData.bpm} BPM • {musicData.key}</p>
+
+                      {/* Mock Audio Player */}
+                      <div className="w-full bg-gray-800 h-12 rounded-full flex items-center px-4 gap-3 mb-6 border border-white/5">
+                          <button className="text-white hover:text-jap-gold">
+                              <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
+                          </button>
+                          <div className="flex-1 h-1 bg-gray-600 rounded-full overflow-hidden">
+                              <div className="w-1/3 h-full bg-jap-gold"></div>
+                          </div>
+                          <span className="text-xs text-gray-400">0:45 / 2:30</span>
+                      </div>
+
+                      <div className="flex flex-col w-full gap-3">
+                          <a href={downloadLink} target="_blank" className="flex items-center justify-center gap-2 w-full bg-jap-gold text-black py-3 rounded font-bold hover:bg-yellow-500 transition-colors">
+                              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                              Download Master (.wav)
+                          </a>
+                          <div className="text-center">
+                              <p className="text-[10px] text-gray-500">100% Royalty Free. Ownership transferred via JAP-ID.</p>
+                              <a href={downloadLink} className="text-[10px] text-indigo-400 hover:text-white">{downloadLink}</a>
+                          </div>
+                      </div>
+                  </div>
+                  
+                  <Button onClick={() => setMusicStep('CONFIG')} variant="ghost" className="mt-8 text-white">Create New Track</Button>
+              </div>
+          );
+      }
+
+      // Processing State for Music
+      return (
+          <div className="bg-black rounded-2xl p-8 border border-white/10 h-full flex flex-col items-center justify-center text-center relative overflow-hidden">
+                <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-20"></div>
+                
+                <div className="flex items-center gap-2 mb-8 h-24">
+                    {[1,2,3,4,5,6,7,8].map(i => (
+                        <div key={i} className="w-3 bg-indigo-500 rounded-full animate-bounce" style={{ height: '60px', animationDelay: `${i * 0.1}s` }}></div>
+                    ))}
+                </div>
+
+                <h3 className="text-2xl font-mono text-white mb-2">Synthesizing Audio...</h3>
+                <p className="text-indigo-400 text-xs font-mono uppercase tracking-widest mb-8 animate-pulse">
+                    {musicStep === 'COMPOSING' && "Generative AI Composing Melody"}
+                    {musicStep === 'MASTERING' && "Analog Mastering Process"}
+                </p>
+
+                <div className="w-64 bg-gray-900 h-1 rounded-full overflow-hidden">
+                    <div className="h-full bg-indigo-500 animate-progress"></div>
+                </div>
+          </div>
+      );
+  }
 
   const renderEbookStudio = () => {
       // CERTIFIED CHECK
@@ -769,6 +1016,12 @@ const AIAgentLab: React.FC<AIAgentLabProps> = ({ user, onUsage }) => {
                 📖 E-Book Creator <span className="ml-2 text-[10px] bg-black text-jap-gold px-1.5 rounded border border-jap-gold">CERTIFIED</span>
             </button>
             <button 
+                onClick={() => setMode('MUSIC_STUDIO')}
+                className={`px-6 py-3 rounded-lg border font-bold text-sm transition-all whitespace-nowrap flex items-center ${mode === 'MUSIC_STUDIO' ? 'bg-gradient-to-r from-indigo-500 to-purple-600 text-white border-transparent shadow-[0_0_15px_rgba(99,102,241,0.4)] scale-105' : 'bg-jap-card text-gray-400 border-white/10 hover:border-white/30'}`}
+            >
+                🎵 Music Studio <span className="ml-2 text-[10px] bg-black text-jap-gold px-1.5 rounded border border-jap-gold">CERTIFIED</span>
+            </button>
+            <button 
                 onClick={() => setMode('COURSE_STUDIO')}
                 className={`px-6 py-3 rounded-lg border font-bold text-sm transition-all whitespace-nowrap flex items-center ${mode === 'COURSE_STUDIO' ? 'bg-gradient-to-r from-jap-gold to-yellow-500 text-black border-transparent shadow-[0_0_15px_rgba(212,175,55,0.4)] scale-105' : 'bg-jap-card text-gray-400 border-white/10 hover:border-white/30'}`}
             >
@@ -803,7 +1056,7 @@ const AIAgentLab: React.FC<AIAgentLabProps> = ({ user, onUsage }) => {
         </div>
 
         {/* Mission Input Control (Hidden for Studio Modes) */}
-        {mode !== 'COURSE_STUDIO' && mode !== 'EBOOK_CREATOR' && (
+        {mode !== 'COURSE_STUDIO' && mode !== 'EBOOK_CREATOR' && mode !== 'MUSIC_STUDIO' && (
             <div className="bg-jap-card rounded-2xl p-1 border border-white/10 shadow-2xl mb-8 relative">
                 {/* Lock Overlay if Pro feature and User is Standard */}
                 {mode !== 'RESEARCH' && user.subscriptionTier === 'STANDARD' && (
@@ -890,6 +1143,31 @@ const AIAgentLab: React.FC<AIAgentLabProps> = ({ user, onUsage }) => {
                 {/* Main Studio Area */}
                 <div className={`${isRunning ? 'lg:col-span-2' : 'lg:col-span-3'} h-full`}>
                     {renderEbookStudio()}
+                </div>
+            </div>
+        ) : mode === 'MUSIC_STUDIO' ? (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 h-[600px]">
+                {/* Left Log */}
+                <div className="lg:col-span-1 bg-black rounded-xl border border-white/10 flex flex-col h-full shadow-inner overflow-hidden relative">
+                    <div className="bg-gray-900 px-4 py-2 border-b border-white/5 flex items-center justify-between">
+                        <span className="text-xs font-mono text-gray-400">STUDIO_LOGS</span>
+                        <div className="flex gap-1.5">
+                            <div className="w-2 h-2 rounded-full bg-indigo-500/50 animate-pulse"></div>
+                        </div>
+                    </div>
+                    <div className="flex-1 p-4 overflow-y-auto font-mono text-xs space-y-2">
+                        {logs.length === 0 && (
+                            <div className="text-gray-600 mt-4 italic text-center">> DAW Ready.</div>
+                        )}
+                        {logs.map((log, i) => (
+                            <div key={i} className={`break-words ${log.includes('Error') ? 'text-red-500' : 'text-indigo-400'}`}>{log}</div>
+                        ))}
+                        <div ref={logsEndRef} />
+                    </div>
+                </div>
+                {/* Main Music Studio */}
+                <div className="lg:col-span-2 h-full">
+                    {renderMusicStudio()}
                 </div>
             </div>
         ) : mode === 'COURSE_STUDIO' && user.subscriptionTier === 'STANDARD' ? (
