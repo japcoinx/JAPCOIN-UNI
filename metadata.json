@@ -1,0 +1,8 @@
+{
+  "name": "Japcoin University",
+  "description": "A premium Web3 educational platform with Learn-to-Earn mechanics and AI tutoring.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
